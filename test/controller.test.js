@@ -32,7 +32,7 @@ describe("#controllers", () => {
       await handler({}, { send: mockSend });
 
       // assert
-      assert(mockSend.calledWith("Hello World !"));
+      assert(mockSend.calledWith("Hello World"));
     });
   });
 });
