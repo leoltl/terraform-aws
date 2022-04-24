@@ -70,14 +70,18 @@ resource "aws_ecs_service" "cicd_service" {
   name            = "cicd_service_web"
   cluster         = aws_ecs_cluster.cicd_cluster.id
   task_definition = aws_ecs_task_definition.cicd_task.arn
-  desired_count   = 1
+  desired_count   = 3
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = [aws_subnet.public.id]
+    subnets          = data.aws_subnet_ids.public.ids
     assign_public_ip = true
     security_groups  = [aws_security_group.allow_http.id]
   }
+
+  depends_on = [
+    aws_subnet.public
+  ]
 }
 
 
@@ -90,10 +94,19 @@ resource "aws_vpc" "cicd_vpc" {
   }
 }
 
+data "aws_subnet_ids" "public" {
+  vpc_id = aws_vpc.cicd_vpc.id
+}
+
 resource "aws_subnet" "public" {
-  vpc_id            = aws_vpc.cicd_vpc.id
-  cidr_block        = "10.0.0.0/24"
-  availability_zone = "us-east-1a"
+  vpc_id = aws_vpc.cicd_vpc.id
+  for_each = {
+    0 = "10.0.0.0/24"
+    1 = "10.0.1.0/24"
+    2 = "10.0.2.0/24"
+  }
+  cidr_block        = each.value
+  availability_zone = ["us-east-1a", "us-east-1b", "us-east-1c"][each.key]
 
   tags = {
     Name = "Public Subnet"
@@ -108,7 +121,7 @@ resource "aws_internet_gateway" "cicd_vpc_igw" {
   }
 }
 
-resource "aws_route_table" "cicd_vpc_us_east_1a_public" {
+resource "aws_route_table" "public_route_table" {
   vpc_id = aws_vpc.cicd_vpc.id
 
   route {
@@ -121,9 +134,16 @@ resource "aws_route_table" "cicd_vpc_us_east_1a_public" {
   }
 }
 
-resource "aws_route_table_association" "cicd_vpc_us_east_1a_public" {
-  subnet_id      = aws_subnet.public.id
-  route_table_id = aws_route_table.cicd_vpc_us_east_1a_public.id
+resource "aws_route_table_association" "cicd_vpc_table_public" {
+
+  for_each = aws_subnet.public
+
+  subnet_id      = each.value.id
+  route_table_id = aws_route_table.public_route_table.id
+
+  depends_on = [
+    aws_subnet.public
+  ]
 }
 
 resource "aws_security_group" "allow_http" {
