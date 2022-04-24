@@ -23,7 +23,7 @@ resource "aws_ecs_cluster" "cicd_cluster" {
 }
 
 resource "aws_ecs_task_definition" "cicd_task" {
-  family = "cicd-task"
+  family = "cicd-web"
   container_definitions = jsonencode([
     {
       "name" : "cicd-web"
@@ -73,15 +73,38 @@ resource "aws_ecs_service" "cicd_service" {
   desired_count   = 3
   launch_type     = "FARGATE"
 
+  load_balancer {
+    target_group_arn = aws_lb_target_group.target_group.arn
+    container_name   = aws_ecs_task_definition.cicd_task.family
+    container_port   = 3000
+  }
+
   network_configuration {
     subnets          = data.aws_subnet_ids.public.ids
     assign_public_ip = true
-    security_groups  = [aws_security_group.allow_http.id]
+    security_groups  = ["${aws_security_group.service_security_group.id}"]
   }
 
   depends_on = [
     aws_subnet.public
   ]
+}
+
+resource "aws_security_group" "service_security_group" {
+  vpc_id = aws_vpc.cicd_vpc.id
+  ingress {
+    from_port       = 0
+    to_port         = 0
+    protocol        = "-1"
+    security_groups = ["${aws_security_group.alb_security_group.id}"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }
 
 
@@ -167,5 +190,51 @@ resource "aws_security_group" "allow_http" {
 
   tags = {
     Name = "allow_http_sg"
+  }
+}
+
+resource "aws_alb" "application_load_balancer" {
+  name               = "cicd-web-alb"
+  load_balancer_type = "application"
+  subnets            = data.aws_subnet_ids.public.ids
+  security_groups    = ["${aws_security_group.alb_security_group.id}"]
+}
+
+resource "aws_security_group" "alb_security_group" {
+  vpc_id = aws_vpc.cicd_vpc.id
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_lb_target_group" "target_group" {
+  name        = "target-group"
+  port        = 80
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = aws_vpc.cicd_vpc.id
+  health_check {
+    matcher = "200,301,302"
+    path    = "/"
+  }
+}
+
+resource "aws_lb_listener" "listener" {
+  load_balancer_arn = aws_alb.application_load_balancer.arn # Referencing our load balancer
+  port              = "80"
+  protocol          = "HTTP"
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.target_group.arn # Referencing our tagrte group
   }
 }
