@@ -80,13 +80,12 @@ resource "aws_ecs_service" "cicd_service" {
   }
 
   network_configuration {
-    subnets          = data.aws_subnet_ids.public.ids
-    assign_public_ip = true
-    security_groups  = ["${aws_security_group.service_security_group.id}"]
+    subnets         = data.aws_subnet_ids.private.ids
+    security_groups = ["${aws_security_group.service_security_group.id}"]
   }
 
   depends_on = [
-    aws_subnet.public
+    aws_subnet.private
   ]
 }
 
@@ -119,6 +118,11 @@ resource "aws_vpc" "cicd_vpc" {
 
 data "aws_subnet_ids" "public" {
   vpc_id = aws_vpc.cicd_vpc.id
+
+  filter {
+    name   = "tag:Name"
+    values = ["Public Subnet"]
+  }
 }
 
 resource "aws_subnet" "public" {
@@ -133,6 +137,29 @@ resource "aws_subnet" "public" {
 
   tags = {
     Name = "Public Subnet"
+  }
+}
+
+data "aws_subnet_ids" "private" {
+  vpc_id = aws_vpc.cicd_vpc.id
+  filter {
+    name   = "tag:Name"
+    values = ["Private Subnet"]
+  }
+}
+
+resource "aws_subnet" "private" {
+  vpc_id = aws_vpc.cicd_vpc.id
+  for_each = {
+    0 = "10.0.3.0/24"
+    1 = "10.0.4.0/24"
+    2 = "10.0.5.0/24"
+  }
+  cidr_block        = each.value
+  availability_zone = ["us-east-1a", "us-east-1b", "us-east-1c"][each.key]
+
+  tags = {
+    Name = "Private Subnet"
   }
 }
 
@@ -166,6 +193,42 @@ resource "aws_route_table_association" "cicd_vpc_table_public" {
 
   depends_on = [
     aws_subnet.public
+  ]
+}
+
+resource "aws_eip" "nat_eip" {
+  vpc        = true
+  depends_on = [aws_internet_gateway.cicd_vpc_igw]
+}
+
+resource "aws_nat_gateway" "nat" {
+  allocation_id = aws_eip.nat_eip.id
+  subnet_id     = tolist(data.aws_subnet_ids.public.ids)[0]
+  depends_on    = [aws_internet_gateway.cicd_vpc_igw]
+}
+
+resource "aws_route_table" "private_route_table" {
+  vpc_id = aws_vpc.cicd_vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_nat_gateway.nat.id
+  }
+
+  tags = {
+    Name = "Private Subnet Route Table"
+  }
+}
+
+resource "aws_route_table_association" "cicd_vpc_table_private" {
+
+  for_each = aws_subnet.private
+
+  subnet_id      = each.value.id
+  route_table_id = aws_route_table.private_route_table.id
+
+  depends_on = [
+    aws_subnet.private
   ]
 }
 
