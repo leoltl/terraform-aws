@@ -197,27 +197,36 @@ resource "aws_route_table_association" "cicd_vpc_table_public" {
 }
 
 resource "aws_eip" "nat_eip" {
+  for_each   = aws_subnet.public
   vpc        = true
-  depends_on = [aws_internet_gateway.cicd_vpc_igw]
+  depends_on = [aws_internet_gateway.cicd_vpc_igw, aws_subnet.public]
 }
 
 resource "aws_nat_gateway" "nat" {
-  allocation_id = aws_eip.nat_eip.id
-  subnet_id     = tolist(data.aws_subnet_ids.public.ids)[0]
-  depends_on    = [aws_internet_gateway.cicd_vpc_igw]
+  for_each = aws_eip.nat_eip
+
+  allocation_id = each.value.id
+  subnet_id     = aws_subnet.public[each.key].id
+  depends_on    = [aws_internet_gateway.cicd_vpc_igw, aws_eip.nat_eip]
 }
 
 resource "aws_route_table" "private_route_table" {
+  for_each = aws_nat_gateway.nat
+
   vpc_id = aws_vpc.cicd_vpc.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_nat_gateway.nat.id
+    gateway_id = each.value.id
   }
 
   tags = {
     Name = "Private Subnet Route Table"
   }
+
+  depends_on = [
+    aws_nat_gateway.nat
+  ]
 }
 
 resource "aws_route_table_association" "cicd_vpc_table_private" {
@@ -225,10 +234,11 @@ resource "aws_route_table_association" "cicd_vpc_table_private" {
   for_each = aws_subnet.private
 
   subnet_id      = each.value.id
-  route_table_id = aws_route_table.private_route_table.id
+  route_table_id = aws_route_table.private_route_table[each.key].id
 
   depends_on = [
-    aws_subnet.private
+    aws_subnet.private,
+    aws_route_table.private_route_table
   ]
 }
 
