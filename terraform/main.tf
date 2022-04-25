@@ -174,14 +174,15 @@ resource "aws_internet_gateway" "cicd_vpc_igw" {
 resource "aws_route_table" "public_route_table" {
   vpc_id = aws_vpc.cicd_vpc.id
 
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.cicd_vpc_igw.id
-  }
-
   tags = {
     Name = "Public Subnet Route Table"
   }
+}
+
+resource "aws_route" "public_zone_gateway_route" {
+  route_table_id         = aws_route_table.public_route_table.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.cicd_vpc_igw.id
 }
 
 resource "aws_route_table_association" "cicd_vpc_table_public" {
@@ -215,11 +216,6 @@ resource "aws_route_table" "private_route_table" {
 
   vpc_id = aws_vpc.cicd_vpc.id
 
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = each.value.id
-  }
-
   tags = {
     Name = "Private Subnet Route Table"
   }
@@ -227,6 +223,14 @@ resource "aws_route_table" "private_route_table" {
   depends_on = [
     aws_nat_gateway.nat
   ]
+}
+
+resource "aws_route" "private_zone_nat_gateway_route" {
+  for_each = aws_route_table.private_route_table
+
+  route_table_id         = each.value.id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = aws_nat_gateway.nat[each.key].id
 }
 
 resource "aws_route_table_association" "cicd_vpc_table_private" {
@@ -240,30 +244,6 @@ resource "aws_route_table_association" "cicd_vpc_table_private" {
     aws_subnet.private,
     aws_route_table.private_route_table
   ]
-}
-
-resource "aws_security_group" "allow_http" {
-  name        = "allow_http_sg"
-  description = "Allow HTTP inbound connections"
-  vpc_id      = aws_vpc.cicd_vpc.id
-
-  ingress {
-    from_port   = 3000
-    to_port     = 3000
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "allow_http_sg"
-  }
 }
 
 resource "aws_alb" "application_load_balancer" {
