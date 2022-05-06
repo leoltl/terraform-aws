@@ -85,7 +85,8 @@ resource "aws_ecs_service" "cicd_service" {
   }
 
   depends_on = [
-    aws_subnet.private
+    aws_subnet.private,
+    aws_lb_target_group.target_group
   ]
 }
 
@@ -119,21 +120,46 @@ resource "aws_vpc" "cicd_vpc" {
 data "aws_subnet_ids" "public" {
   vpc_id = aws_vpc.cicd_vpc.id
 
+  depends_on = [
+    aws_subnet.public
+  ]
+
   filter {
     name   = "tag:Name"
     values = ["Public Subnet"]
   }
 }
 
+locals {
+  azs_config = [
+    {
+      availability_zone  = "us-east-1a"
+      public_cidr_block  = "10.0.0.0/24"
+      private_cidr_block = "10.0.3.0/24"
+    },
+    {
+      availability_zone  = "us-east-1b"
+      public_cidr_block  = "10.0.1.0/24"
+      private_cidr_block = "10.0.4.0/24"
+    },
+    {
+      availability_zone  = "us-east-1c"
+      public_cidr_block  = "10.0.2.0/24"
+      private_cidr_block = "10.0.5.0/24"
+    },
+  ]
+}
+
 resource "aws_subnet" "public" {
   vpc_id = aws_vpc.cicd_vpc.id
+
   for_each = {
-    0 = "10.0.0.0/24"
-    1 = "10.0.1.0/24"
-    2 = "10.0.2.0/24"
+    for index, az_config in local.azs_config :
+    index => az_config
   }
-  cidr_block        = each.value
-  availability_zone = ["us-east-1a", "us-east-1b", "us-east-1c"][each.key]
+
+  cidr_block        = each.value.public_cidr_block
+  availability_zone = each.value.availability_zone
 
   tags = {
     Name = "Public Subnet"
@@ -142,6 +168,10 @@ resource "aws_subnet" "public" {
 
 data "aws_subnet_ids" "private" {
   vpc_id = aws_vpc.cicd_vpc.id
+
+  depends_on = [
+    aws_subnet.private
+  ]
   filter {
     name   = "tag:Name"
     values = ["Private Subnet"]
@@ -150,13 +180,14 @@ data "aws_subnet_ids" "private" {
 
 resource "aws_subnet" "private" {
   vpc_id = aws_vpc.cicd_vpc.id
+
   for_each = {
-    0 = "10.0.3.0/24"
-    1 = "10.0.4.0/24"
-    2 = "10.0.5.0/24"
+    for index, az_config in local.azs_config :
+    index => az_config
   }
-  cidr_block        = each.value
-  availability_zone = ["us-east-1a", "us-east-1b", "us-east-1c"][each.key]
+
+  cidr_block        = each.value.private_cidr_block
+  availability_zone = each.value.availability_zone
 
   tags = {
     Name = "Private Subnet"
