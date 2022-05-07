@@ -70,7 +70,7 @@ resource "aws_ecs_service" "cicd_service" {
   name            = "cicd_service_web"
   cluster         = aws_ecs_cluster.cicd_cluster.id
   task_definition = aws_ecs_task_definition.cicd_task.arn
-  desired_count   = 3
+  desired_count   = 2
   launch_type     = "FARGATE"
 
   load_balancer {
@@ -114,6 +114,10 @@ resource "aws_alb" "application_load_balancer" {
   load_balancer_type = "application"
   subnets            = data.aws_subnet_ids.public.ids
   security_groups    = ["${aws_security_group.alb_security_group.id}"]
+
+  depends_on = [
+    aws_subnet.public
+  ]
 }
 
 resource "aws_security_group" "alb_security_group" {
@@ -143,6 +147,10 @@ resource "aws_lb_target_group" "target_group" {
     matcher = "200,301,302"
     path    = "/"
   }
+
+  depends_on = [
+    aws_alb.application_load_balancer
+  ]
 }
 
 resource "aws_lb_listener" "listener" {
