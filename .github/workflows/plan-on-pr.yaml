@@ -40,12 +40,13 @@ jobs:
 
       - name: Post Plan to GitHub PR
         uses: mshick/add-pr-comment@v1
+        permissions: write-all
         with:
           allow-repeats: true
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           repo-token-user-login: "github-actions[bot]"
           message: |
-            ## ${{ matrix.path }} plan
+            ## Prod plan
             ```
             ${{ steps.plan.outputs.stdout || steps.plan.outputs.stderr }}
             ```
