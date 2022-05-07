@@ -8,6 +8,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  issues: write
 
 jobs:
   plan:
@@ -40,7 +41,6 @@ jobs:
 
       - name: Post Plan to GitHub PR
         uses: mshick/add-pr-comment@v1
-        permissions: write-all
         with:
           allow-repeats: true
           repo-token: ${{ secrets.GITHUB_TOKEN }}
